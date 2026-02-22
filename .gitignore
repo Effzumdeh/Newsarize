@@ -1,0 +1,37 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Gradle
+.gradle/
+build/
+app/build/
+gradle.zip
+
+# Studio
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+
+# Models
+*.bin
+*.tar.gz
+models/
+
+# Logs
+*.log
+*.txt
