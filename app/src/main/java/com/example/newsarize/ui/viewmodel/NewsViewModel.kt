@@ -15,7 +15,10 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -40,8 +43,18 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     private val _isSummarizing = MutableStateFlow(false)
     val isSummarizing = _isSummarizing.asStateFlow()
 
-    val articles = db.articleDao().getAllArticlesFlow()
-        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+    private val _selectedFeedId = MutableStateFlow<Int?>(null)
+    val selectedFeedId = _selectedFeedId.asStateFlow()
+
+    private val _filterState = MutableStateFlow("ALL") // "ALL", "UNREAD", "READ"
+    val filterState = _filterState.asStateFlow()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val articles = combine(_selectedFeedId, _filterState) { feedId, filter ->
+        Pair(feedId, filter)
+    }.flatMapLatest { (feedId, filter) ->
+        db.articleDao().getFilteredArticlesFlow(feedId, filter)
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val feedSources = db.feedSourceDao().getAllFeedSourcesFlow()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
@@ -60,9 +73,11 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         startInferenceWorker()
     }
 
+    private val validExtensions = listOf(".bin", ".task", ".tflite")
+
     fun checkModelStatus() {
         val modelDir = downloader.getModelDirectory()
-        val binFiles = modelDir.listFiles { _, name -> name.endsWith(".bin") }
+        val binFiles = modelDir.listFiles { _, name -> validExtensions.any { name.endsWith(it) } }
         if (binFiles != null && binFiles.isNotEmpty()) {
             val fileModel = binFiles[0] // take the first valid model
             
@@ -90,7 +105,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             _isModelReady.value = false
             _downloadState.value = DownloadState.Error(
-                "Kein Modell gefunden. \nBitte lade 'gemma-2b-it-gpu-int4' oder '...int8' als .tar.gz oder .bin herunter " +
+                "Kein Modell gefunden. \nBitte lade ein Modell (z.B. gemma-2b-it-gpu-int4) als .tar.gz, .bin, .task oder .tflite herunter " +
                 "und wähle die Datei zum Importieren aus."
             )
         }
@@ -130,8 +145,8 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                 val outputDir = downloader.getModelDirectory()
                 if (!outputDir.exists()) outputDir.mkdirs()
 
-                // Clean old bin files
-                outputDir.listFiles { _, name -> name.endsWith(".bin") }?.forEach { it.delete() }
+                // Clean old files
+                outputDir.listFiles { _, name -> validExtensions.any { name.endsWith(it) } }?.forEach { it.delete() }
                 
                 val isTarGz = fileName.lowercase().endsWith(".tar.gz")
                 
@@ -142,7 +157,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                                 var entry = tarIn.nextTarEntry
                                 var foundBin = false
                                 while (entry != null) {
-                                    if (!entry.isDirectory && entry.name.endsWith(".bin")) {
+                                    if (!entry.isDirectory && validExtensions.any { entry.name.endsWith(it) }) {
                                         foundBin = true
                                         val destFile = File(outputDir, File(entry.name).name)
                                         val fos = FileOutputStream(destFile)
@@ -173,7 +188,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                                     entry = tarIn.nextTarEntry
                                 }
                                 if (!foundBin) {
-                                    _downloadState.value = DownloadState.Error("Keine .bin-Datei im .tar.gz-Archiv gefunden!")
+                                    _downloadState.value = DownloadState.Error("Keine valide Modelldatei (.bin, .task, .tflite) im .tar.gz-Archiv gefunden!")
                                     return@launch
                                 }
                             }
@@ -279,6 +294,16 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setFilterState(state: String) { _filterState.value = state }
+    
+    fun setSelectedFeed(feedId: Int?) { _selectedFeedId.value = feedId }
+    
+    fun toggleArticleReadStatus(article: ArticleEntity) {
+        viewModelScope.launch {
+            db.articleDao().updateArticle(article.copy(isRead = !article.isRead))
+        }
+    }
+
     fun addFeedSource(name: String, url: String) {
         viewModelScope.launch {
             db.feedSourceDao().insertFeedSource(FeedSourceEntity(name = name, url = url))
@@ -293,7 +318,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun getModelSizeString(): String {
         val modelDir = downloader.getModelDirectory()
-        val binFiles = modelDir.listFiles { _, name -> name.endsWith(".bin") }
+        val binFiles = modelDir.listFiles { _, name -> validExtensions.any { name.endsWith(it) } }
         var totalSize = 0L
         if (binFiles != null && binFiles.isNotEmpty()) {
             totalSize += binFiles[0].length()
@@ -308,7 +333,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteModelCache() {
         val modelDir = downloader.getModelDirectory()
-        modelDir.listFiles { _, name -> name.endsWith(".bin") }?.forEach { it.delete() }
+        modelDir.listFiles { _, name -> validExtensions.any { name.endsWith(it) } }?.forEach { it.delete() }
         _isModelReady.value = false
         _downloadState.value = DownloadState.Idle
     }
