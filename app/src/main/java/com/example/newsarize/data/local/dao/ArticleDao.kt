@@ -16,6 +16,9 @@ interface ArticleDao {
     @Query("SELECT * FROM articles ORDER BY pubDate DESC")
     fun getAllArticlesFlow(): Flow<List<ArticleEntity>>
 
+    @Query("SELECT * FROM articles WHERE (:feedId IS NULL OR feedId = :feedId) AND (:filterState = 'ALL' OR (:filterState = 'READ' AND isRead = 1) OR (:filterState = 'UNREAD' AND isRead = 0)) ORDER BY pubDate DESC")
+    fun getFilteredArticlesFlow(feedId: Int?, filterState: String): Flow<List<ArticleEntity>>
+
     @Query("SELECT * FROM articles WHERE pubDate >= :startOfDay ORDER BY pubDate DESC")
     fun getArticlesSinceFlow(startOfDay: Long): Flow<List<ArticleEntity>>
 

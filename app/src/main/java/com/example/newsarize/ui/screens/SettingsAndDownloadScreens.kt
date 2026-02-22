@@ -49,7 +49,7 @@ fun DownloadScreen(viewModel: NewsViewModel) {
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                "Zur Nutzung der On-Device KI musst du das Google MediaPipe Gemma 2B Modell von Kaggle/HuggingFace laden.\n\nDu kannst direkt das originale '.tar.gz' Archiv (z.B. gemma-2b-it-gpu-int4.tar.gz oder gemma-2b-it-gpu-int8.tar.gz) auswählen. Die App wird die '.bin' automatisch entpacken.",
+                "Zur Nutzung der On-Device KI musst du das Google MediaPipe Gemma Modell (z.B. von Kaggle) laden.\n\nDu kannst direkt das originale '.tar.gz' Archiv oder eine entpackte .bin, .task, oder .tflite Datei auswählen. Die App wird Archive bei Bedarf automatisch entpacken.",
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )

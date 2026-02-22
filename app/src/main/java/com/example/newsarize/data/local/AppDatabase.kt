@@ -11,7 +11,7 @@ import com.example.newsarize.data.local.entity.FeedSourceEntity
 
 @Database(
     entities = [ArticleEntity::class, FeedSourceEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

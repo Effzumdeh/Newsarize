@@ -8,9 +8,10 @@ Newsarize was built to combat information overload without sending your private 
 
 ## ✨ Key Features
 - **100% Local Inference:** No API keys, no server costs, and no data leaves your device. Everything runs through the native `tasks-genai` hardware acceleration.
-- **Smart Background Queue:** Newsarize uses a continuous FIFO coroutine daemon that intelligently digests unsummarized articles in the background, prioritizing the ones you are currently looking at on the screen `pubDate DESC`.
-- **Database Integrity:** Robust local caching powered by Android Room, complete with unique feed constraints to prevent duplicate entries and AI-amnesia.
-- **Direct Model Sideloading:** Since LLM model files are huge (~1.2 - 2.5 GB), Newsarize expects you to sideload the model. It automatically extracts `gemma-2b-it-gpu-int4.bin` or `.tar.gz` archives and safely tucks them into the protected app sandbox.
+- **Universal XML Unmarshaller:** Newsarize natively digests both standard RSS 2.0 and complex Atom structures (like Heise & Caschys Blog), reliably capturing deep ISO-8601 timestamps and extracting `href` attributes automatically.
+- **Smart Background Queue & Filtering:** A continuous FIFO coroutine daemon intelligently digests unsummarized articles in the background, prioritizing visible active elements. The UI features segmented chips to instantly filter lists by "Alle", "Ungelesen", or "Gelesen", alongside specific RSS provider dropdowns.
+- **Database Integrity & Cascading:** Robust local caching powered by Android Room v3. Deleting an RSS Feed from your settings immediately executes a `ForeignKey.CASCADE` delete natively, wiping out all bloated AI article data securely while preserving clean caches.
+- **Direct Model Sideloading:** Since LLM model files are huge (~1.2 - 2.5 GB), Newsarize expects you to sideload the model. It automatically extracts Kaggle `gemma-2b-it-gpu-int4` archives effortlessly supporting `.bin`, `.tflite`, and `.task` file extensions natively!
 
 ## 🚀 Quick Start
 Check out the [Installation Guide](https://florian-projects.github.io/Newsarize/installation) on our documentation site for detailed setup instructions and where to download the compatible Gemma `.bin` models!

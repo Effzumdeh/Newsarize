@@ -15,11 +15,11 @@ cd Newsarize
 Due to Google's licensing and file size limits (Android 16 restricts App data folders), you must provide the LLM model manually.
 1. Visit Kaggle or HuggingFace and search for the `gemma-2b-it` model.
 2. Download the `gpu-int8` or `gpu-int4` variant.
-3. Save the `.tar.gz` or `.bin` file directly into your Android device's `Downloads` folder.
+3. Save the `.tar.gz` archive, or a raw `.bin`, `.task`, or `.tflite` file directly into your Android device's `Downloads` folder.
 
 ## 3. Link the Model
 1. Open Newsarize on your phone.
 2. Navigate to the **Settings** (Gear Icon).
-3. Tap **"Select Local .bin/.tar.gz File"**.
+3. Tap **"Select Downloaded Model File"**.
 4. The app uses the `ContentResolver` to silently extract the archive (if necessary) and copy the massive 2 GB model file into its protected internal sandbox.
 5. Once imported, you are ready to go!
