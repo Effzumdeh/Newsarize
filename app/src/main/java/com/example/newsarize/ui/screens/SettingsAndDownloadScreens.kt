@@ -19,6 +19,8 @@ import com.example.newsarize.domain.downloader.DownloadState
 @Composable
 fun DownloadScreen(viewModel: NewsViewModel) {
     val downloadState by viewModel.downloadState.collectAsState()
+    val isModelReady by viewModel.isModelReady.collectAsState()
+    val isModelInstalled by viewModel.isModelInstalled.collectAsState()
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
@@ -44,12 +46,12 @@ fun DownloadScreen(viewModel: NewsViewModel) {
             )
             Spacer(modifier = Modifier.height(24.dp))
             Text(
-                "Sideload Model Required",
+                if (isModelInstalled) "Sideload Model Found" else "Sideload Model Required",
                 style = MaterialTheme.typography.headlineSmall
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                "Zur Nutzung der On-Device KI musst du das Google MediaPipe Gemma Modell (z.B. von Kaggle) laden.\n\nDu kannst direkt das originale '.tar.gz' Archiv oder eine entpackte .bin, .task, oder .tflite Datei auswählen. Die App wird Archive bei Bedarf automatisch entpacken.",
+                "Zur Nutzung der On-Device KI musst du das Google MediaPipe Gemma Modell (z.B. von Kaggle) laden.\n\nDu kannst direkt das originale '.tar.gz' Archiv oder eine entpackte .bin, .task, .tflite, oder .litertlm Datei auswählen. Die App wird Archive bei Bedarf automatisch entpacken.",
                 style = MaterialTheme.typography.bodyLarge,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
@@ -58,7 +60,15 @@ fun DownloadScreen(viewModel: NewsViewModel) {
             when (val state = downloadState) {
                 is DownloadState.Idle -> {
                     Button(onClick = { filePickerLauncher.launch("*/*") }) {
-                        Text("Select Downloaded Model File")
+                        Text(if (isModelInstalled) "Model ändern / aktualisieren" else "Select Downloaded Model File")
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Button(
+                        onClick = { viewModel.initializeEngine() },
+                        enabled = !isModelReady,
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                    ) {
+                        Text("Manually Start AI Engine")
                     }
                 }
                 is DownloadState.Downloading -> {
@@ -104,7 +114,8 @@ fun DownloadScreen(viewModel: NewsViewModel) {
             
             Spacer(modifier = Modifier.height(24.dp))
             Text(
-                "Keep the app open during download.",
+                "Das geladene Modell (.bin, .task, .tflite, .litertlm) wird sicher im App-Speicher " +
+                "(${viewModel.getModelSizeString()}) isoliert aufbewahrt.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
@@ -163,6 +174,28 @@ fun SettingsScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text("Status: ${if (isModelReady) "Installed (MediaPipe Tasks Ready)" else "Not Installed"}", style = MaterialTheme.typography.bodyMedium)
                     Text("Size: ${viewModel.getModelSizeString()}", style = MaterialTheme.typography.bodyMedium)
+                    
+                    if (isModelReady) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Engine is running ✅", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyLarge)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = { viewModel.stopEngine() },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                        ) {
+                            Text("Stop AI Engine")
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("Engine is stopped 🛑", style = MaterialTheme.typography.bodyLarge)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Button(
+                            onClick = { viewModel.initializeEngine() },
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                        ) {
+                            Text("Start AI Engine")
+                        }
+                    }
                     
                     if (isModelReady) {
                         Spacer(modifier = Modifier.height(12.dp))

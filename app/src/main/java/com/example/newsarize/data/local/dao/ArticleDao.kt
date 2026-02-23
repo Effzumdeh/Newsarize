@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import com.example.newsarize.data.local.entity.ArticleEntity
+import com.example.newsarize.data.local.entity.ArticleUiModel
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -13,21 +14,27 @@ interface ArticleDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertArticles(articles: List<ArticleEntity>)
 
-    @Query("SELECT * FROM articles ORDER BY pubDate DESC")
-    fun getAllArticlesFlow(): Flow<List<ArticleEntity>>
+    @Query("SELECT id, feedId, title, link, pubDate, summary, isRead FROM articles ORDER BY pubDate DESC")
+    fun getAllArticlesFlow(): Flow<List<ArticleUiModel>>
 
-    @Query("SELECT * FROM articles WHERE (:feedId IS NULL OR feedId = :feedId) AND (:filterState = 'ALL' OR (:filterState = 'READ' AND isRead = 1) OR (:filterState = 'UNREAD' AND isRead = 0)) ORDER BY pubDate DESC")
-    fun getFilteredArticlesFlow(feedId: Int?, filterState: String): Flow<List<ArticleEntity>>
+    @Query("SELECT id, feedId, title, link, pubDate, summary, isRead FROM articles WHERE (:feedId IS NULL OR feedId = :feedId) AND (:filterState = 'ALL' OR (:filterState = 'READ' AND isRead = 1) OR (:filterState = 'UNREAD' AND isRead = 0)) ORDER BY pubDate DESC")
+    fun getFilteredArticlesFlow(feedId: Int?, filterState: String): Flow<List<ArticleUiModel>>
 
-    @Query("SELECT * FROM articles WHERE pubDate >= :startOfDay ORDER BY pubDate DESC")
-    fun getArticlesSinceFlow(startOfDay: Long): Flow<List<ArticleEntity>>
+    @Query("SELECT id, feedId, title, link, pubDate, summary, isRead FROM articles WHERE pubDate >= :startOfDay ORDER BY pubDate DESC")
+    fun getArticlesSinceFlow(startOfDay: Long): Flow<List<ArticleUiModel>>
 
     @Query("SELECT * FROM articles WHERE summary IS NULL")
     suspend fun getUnsummarizedArticles(): List<ArticleEntity>
 
-    @Query("SELECT * FROM articles WHERE summary IS NULL ORDER BY pubDate DESC LIMIT 1")
-    suspend fun getNextUnsummarizedArticle(): ArticleEntity?
+    @Query("SELECT id FROM articles WHERE summary IS NULL ORDER BY pubDate DESC LIMIT 1")
+    suspend fun getNextUnsummarizedArticleId(): Int?
+
+    @Query("SELECT * FROM articles WHERE id = :id")
+    suspend fun getArticleById(id: Int): ArticleEntity?
 
     @Update
     suspend fun updateArticle(article: ArticleEntity)
+    
+    @Query("UPDATE articles SET isRead = :isRead WHERE id = :articleId")
+    suspend fun updateArticleReadStatus(articleId: Int, isRead: Boolean)
 }

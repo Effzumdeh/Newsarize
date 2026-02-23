@@ -30,3 +30,13 @@ data class ArticleEntity(
     val summary: String? = null, // Filled after LLM inference
     val isRead: Boolean = false
 )
+
+data class ArticleUiModel(
+    val id: Int,
+    val feedId: Int,
+    val title: String,
+    val link: String,
+    val pubDate: Long,
+    val summary: String?,
+    val isRead: Boolean
+)
