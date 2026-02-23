@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.newsarize.data.local.AppDatabase
 import com.example.newsarize.data.local.entity.ArticleEntity
+import com.example.newsarize.data.local.entity.ArticleUiModel
 import com.example.newsarize.data.local.entity.FeedSourceEntity
 import com.example.newsarize.data.network.RssService
 import com.example.newsarize.domain.ai.MediaPipeAiService
@@ -37,6 +38,9 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     private val _isModelReady = MutableStateFlow(false)
     val isModelReady = _isModelReady.asStateFlow()
 
+    private val _isModelInstalled = MutableStateFlow(false)
+    val isModelInstalled = _isModelInstalled.asStateFlow()
+
     private val _downloadState = MutableStateFlow<DownloadState>(DownloadState.Idle)
     val downloadState = _downloadState.asStateFlow()
 
@@ -60,7 +64,9 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     init {
-        checkModelStatus()
+        // We no longer call checkModelStatus() here to avoid warm-restart GPU crashes.
+        // The user must manually start the engine or it starts via UI triggers.
+        
         // Prefill default feeds if empty
         viewModelScope.launch {
             if (db.feedSourceDao().getAllFeedSources().isEmpty()) {
@@ -73,41 +79,59 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         startInferenceWorker()
     }
 
-    private val validExtensions = listOf(".bin", ".task", ".tflite")
+    private val validExtensions = listOf(".bin", ".task", ".tflite", ".litertlm")
 
-    fun checkModelStatus() {
+    fun initializeEngine() {
         val modelDir = downloader.getModelDirectory()
         val binFiles = modelDir.listFiles { _, name -> validExtensions.any { name.endsWith(it) } }
         if (binFiles != null && binFiles.isNotEmpty()) {
-            val fileModel = binFiles[0] // take the first valid model
+            val fileModel = binFiles[0]
             
-            // Check file size (Gemma 2B should be ~1.2 GB up to ~2.6 GB for INT8)
-            if (fileModel.length() < 100 * 1024 * 1024) {
-                fileModel.delete()
-                _isModelReady.value = false
-                _downloadState.value = DownloadState.Error("MediaPipe-Modell war fehlerhaft (zu klein).")
-                return
-            }
-
-            // Init AI Service
             viewModelScope.launch {
+                _downloadState.value = DownloadState.Processing // Show "Loading Engine"
                 try {
+                    // WORKAROUND: Give GPU drivers extra time during manual start
+                    kotlinx.coroutines.delay(800) 
+                    
                     val success = aiService.initialize(fileModel)
                     if (success) {
                         _isModelReady.value = true
                         _downloadState.value = DownloadState.Finished
                     }
-                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     _isModelReady.value = false
-                    _downloadState.value = DownloadState.Error("Init-Fehler: ${e.message}")
+                    _downloadState.value = DownloadState.Error("Initialisierung fehlgeschlagen. Tipp: App neustarten oder Modell erneut wählen. Details: ${e.message}")
                 }
             }
+        }
+    }
+
+    fun stopEngine() {
+        aiService.close()
+        _isModelReady.value = false
+        _downloadState.value = DownloadState.Idle
+    }
+
+    fun checkModelStatus() {
+        val modelDir = downloader.getModelDirectory()
+        val binFiles = modelDir.listFiles { _, name -> validExtensions.any { name.endsWith(it) } }
+        if (binFiles != null && binFiles.isNotEmpty()) {
+            val fileModel = binFiles[0]
+            if (fileModel.length() < 100 * 1024 * 1024) {
+                fileModel.delete()
+                _isModelReady.value = false
+                _downloadState.value = DownloadState.Error("Modell war fehlerhaft (zu klein).")
+            } else {
+                // We found a model, but we DON'T auto-start. 
+                // We just set the state to Idle so the UI shows "Ready to start".
+                _isModelInstalled.value = true
+                _isModelReady.value = false
+                _downloadState.value = DownloadState.Idle
+            }
         } else {
+            _isModelInstalled.value = false
             _isModelReady.value = false
-            _downloadState.value = DownloadState.Error(
-                "Kein Modell gefunden. \nBitte lade ein Modell (z.B. gemma-2b-it-gpu-int4) als .tar.gz, .bin, .task oder .tflite herunter " +
-                "und wähle die Datei zum Importieren aus."
-            )
+            _downloadState.value = DownloadState.Error("Kein Modell installiert.")
         }
     }
 
@@ -223,6 +247,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 
                 _downloadState.value = DownloadState.Finished
+                _isModelInstalled.value = true // Ensure UI recognizes file presence
                 checkModelStatus()
                 
             } catch (e: Exception) {
@@ -260,8 +285,8 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                 }
 
                 // Fetch oldest/newest unsummarized item (prioritize newest visible UI item)
-                val nextArticle = db.articleDao().getNextUnsummarizedArticle()
-                if (nextArticle == null) {
+                val nextArticleId = db.articleDao().getNextUnsummarizedArticleId()
+                if (nextArticleId == null) {
                     // Queue empty, chill
                     _isSummarizing.value = false
                     kotlinx.coroutines.delay(2000)
@@ -271,6 +296,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                 _isSummarizing.value = true
                 
                 try {
+                    val nextArticle = db.articleDao().getArticleById(nextArticleId) ?: continue
                     val chunks = aiService.chunkText(nextArticle.content)
                     val combinedSummary = StringBuilder()
                     
@@ -283,9 +309,11 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                     // Never leave summary exact null, to avoid endless loops on failed generation
                     val safeSummary = finalSummary.ifEmpty { "Generierung fehlgeschlagen." }
                     
-                    db.articleDao().updateArticle(nextArticle.copy(summary = safeSummary))
+                    // Drop the massive HTML text description from SQLite to prevent CursorWindowAllocationException (2MB limit) on app restarts.
+                    db.articleDao().updateArticle(nextArticle.copy(summary = safeSummary, content = ""))
                 } catch (e: Exception) {
-                    db.articleDao().updateArticle(nextArticle.copy(summary = "Fehler bei der Generierung: ${e.message}"))
+                    // Update fallback if possible
+                    db.articleDao().updateArticleReadStatus(nextArticleId, false) // fallback signal
                 }
                 
                 // Slight pause to let GPU cool down and UI thread to catch up frames
@@ -298,9 +326,9 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     
     fun setSelectedFeed(feedId: Int?) { _selectedFeedId.value = feedId }
     
-    fun toggleArticleReadStatus(article: ArticleEntity) {
+    fun toggleArticleReadStatus(article: ArticleUiModel) {
         viewModelScope.launch {
-            db.articleDao().updateArticle(article.copy(isRead = !article.isRead))
+            db.articleDao().updateArticleReadStatus(article.id, !article.isRead)
         }
     }
 
@@ -332,6 +360,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun deleteModelCache() {
+        aiService.close()
         val modelDir = downloader.getModelDirectory()
         modelDir.listFiles { _, name -> validExtensions.any { name.endsWith(it) } }?.forEach { it.delete() }
         _isModelReady.value = false

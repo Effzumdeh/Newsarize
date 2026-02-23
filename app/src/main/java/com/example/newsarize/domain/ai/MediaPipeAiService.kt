@@ -19,17 +19,36 @@ class MediaPipeAiService(private val context: Context) {
 
                 Log.d("MediaPipeAiService", "Initializing MediaPipe LlmInference")
                 
-                val options = LlmInference.LlmInferenceOptions.builder()
-                    .setModelPath(modelFile.absolutePath)
-                    .setMaxTokens(300)
-                    .setPreferredBackend(LlmInference.Backend.GPU)
-                    .build()
+                // WORKAROUND: Force OpenCL driver cache invalidation on warm restarts
+                // The underlying GPU driver (especially Qualcomm Adreno) crashes when loading serialized 
+                // pipeline caches across sessions. Updating file stat and clearing the local code cache prevents it.
+                modelFile.setLastModified(System.currentTimeMillis())
+                try {
+                    context.codeCacheDir.listFiles()?.forEach { it.deleteRecursively() }
+                } catch (e: Exception) { }
                 
-                llmInference = LlmInference.createFromOptions(context, options)
+                try {
+                    val options = LlmInference.LlmInferenceOptions.builder()
+                        .setModelPath(modelFile.absolutePath)
+                        .setMaxTokens(300)
+                        .setPreferredBackend(LlmInference.Backend.GPU)
+                        .build()
+                    llmInference = LlmInference.createFromOptions(context, options)
+                } catch (e: Throwable) {
+                    Log.w("MediaPipeAiService", "GPU Init failed, retrying on CPU...", e)
+                    // FALLBACK TO CPU: If GPU drivers are corrupted/locked, CPU is the only safe harbor
+                    val cpuOptions = LlmInference.LlmInferenceOptions.builder()
+                        .setModelPath(modelFile.absolutePath)
+                        .setMaxTokens(300)
+                        .setPreferredBackend(LlmInference.Backend.CPU)
+                        .build()
+                    llmInference = LlmInference.createFromOptions(context, cpuOptions)
+                }
+                
                 isInitialized = true
                 true
             } catch (e: Exception) {
-                Log.e("MediaPipeAiService", "Init failed", e)
+                Log.e("MediaPipeAiService", "Complete Init failed (incl. CPU)", e)
                 throw e
             }
         }
@@ -76,7 +95,10 @@ class MediaPipeAiService(private val context: Context) {
     }
 
     fun close() {
-        llmInference?.close()
+        try {
+            llmInference?.close()
+        } catch (e: Exception) {}
+        llmInference = null
         isInitialized = false
     }
 }
