@@ -28,6 +28,7 @@ data class ArticleEntity(
     val content: String,
     val pubDate: Long,
     val summary: String? = null, // Filled after LLM inference
+    val imageUrl: String? = null, // Extracted from RSS
     val isRead: Boolean = false,
     val category: String? = null
 )
@@ -39,6 +40,7 @@ data class ArticleUiModel(
     val link: String,
     val pubDate: Long,
     val summary: String?,
+    val imageUrl: String?,
     val isRead: Boolean,
     val category: String?
 )

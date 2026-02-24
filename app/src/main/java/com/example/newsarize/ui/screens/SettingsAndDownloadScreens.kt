@@ -18,6 +18,11 @@ import androidx.compose.ui.unit.dp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.example.newsarize.ui.viewmodel.NewsViewModel
+import androidx.compose.material3.SwipeToDismissBox
+import androidx.compose.material3.rememberSwipeToDismissBoxState
+import androidx.compose.material3.SwipeToDismissBoxValue
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.statusBars
 
 import com.example.newsarize.domain.downloader.DownloadState
 
@@ -137,9 +142,11 @@ fun SettingsScreen(
 ) {
     val feeds by viewModel.feedSources.collectAsState()
     val isModelReady by viewModel.isModelReady.collectAsState()
-    var showDialog by remember { mutableStateOf(false) }
+    var showFeedDialog by remember { mutableStateOf(false) }
     var newFeedName by remember { mutableStateOf("") }
     var newFeedUrl by remember { mutableStateOf("") }
+    var showStopDialog by remember { mutableStateOf(false) }
+    var showDeleteDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -149,14 +156,16 @@ fun SettingsScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
-                }
+                },
+                windowInsets = WindowInsets.statusBars
             )
         },
         floatingActionButton = {
             FloatingActionButton(
-                onClick = { showDialog = true },
+                onClick = { showFeedDialog = true },
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
-                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                shape = ShapeDefaults.Large
             ) {
                 Icon(Icons.Default.Add, contentDescription = "Add Feed")
             }
@@ -165,10 +174,10 @@ fun SettingsScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
-                .padding(16.dp)
+                .padding(top = padding.calculateTopPadding(), start = 16.dp, end = 16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
+            Spacer(modifier = Modifier.height(16.dp))
             Text(
                 "Model Management",
                 style = MaterialTheme.typography.titleLarge,
@@ -190,7 +199,7 @@ fun SettingsScreen(
                         Text("Engine is running ✅", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyLarge)
                         Spacer(modifier = Modifier.height(8.dp))
                         FilledTonalButton(
-                            onClick = { viewModel.stopEngine() },
+                            onClick = { showStopDialog = true },
                             colors = ButtonDefaults.filledTonalButtonColors(
                                 containerColor = MaterialTheme.colorScheme.errorContainer,
                                 contentColor = MaterialTheme.colorScheme.onErrorContainer
@@ -213,7 +222,7 @@ fun SettingsScreen(
                     if (isModelReady) {
                         Spacer(modifier = Modifier.height(12.dp))
                         OutlinedButton(
-                            onClick = { viewModel.deleteModelCache() },
+                            onClick = { showDeleteDialog = true },
                             colors = ButtonDefaults.outlinedButtonColors(
                                 contentColor = MaterialTheme.colorScheme.error
                             ),
@@ -234,16 +243,43 @@ fun SettingsScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             feeds.forEach { feed ->
-                ListItem(
-                    headlineContent = { Text(feed.name) },
-                    supportingContent = { Text(feed.url) },
-                    trailingContent = {
-                        IconButton(onClick = { viewModel.deleteFeedSource(feed) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete")
-                        }
-                    },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                val dismissState = rememberSwipeToDismissBoxState(
+                    confirmValueChange = { value ->
+                        if (value == SwipeToDismissBoxValue.EndToStart) {
+                            viewModel.deleteFeedSource(feed)
+                            true
+                        } else false
+                    }
                 )
+                SwipeToDismissBox(
+                    state = dismissState,
+                    enableDismissFromStartToEnd = false,
+                    backgroundContent = {
+                        val color = MaterialTheme.colorScheme.errorContainer
+                        val iconTint = MaterialTheme.colorScheme.onErrorContainer
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(color)
+                                .padding(horizontal = 20.dp),
+                            contentAlignment = Alignment.CenterEnd
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = iconTint)
+                        }
+                    }
+                ) {
+                    ListItem(
+                        headlineContent = { Text(feed.name) },
+                        supportingContent = { 
+                            Text(
+                                feed.url, 
+                                style = MaterialTheme.typography.bodySmall, 
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            ) 
+                        },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface)
+                    )
+                }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
 
@@ -260,21 +296,42 @@ fun SettingsScreen(
             
             Spacer(modifier = Modifier.height(8.dp))
             categories.forEach { category ->
-                ListItem(
-                    headlineContent = { Text(category.name) },
-                    trailingContent = {
-                        IconButton(onClick = { viewModel.deleteCategory(category) }) {
-                            Icon(Icons.Default.Delete, contentDescription = "Delete")
-                        }
-                    },
-                    colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                val dismissState = rememberSwipeToDismissBoxState(
+                    confirmValueChange = { value ->
+                        if (value == SwipeToDismissBoxValue.EndToStart) {
+                            viewModel.deleteCategory(category)
+                            true
+                        } else false
+                    }
                 )
+                SwipeToDismissBox(
+                    state = dismissState,
+                    enableDismissFromStartToEnd = false,
+                    backgroundContent = {
+                        val color = MaterialTheme.colorScheme.errorContainer
+                        val iconTint = MaterialTheme.colorScheme.onErrorContainer
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(color)
+                                .padding(horizontal = 20.dp),
+                            contentAlignment = Alignment.CenterEnd
+                        ) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete", tint = iconTint)
+                        }
+                    }
+                ) {
+                    ListItem(
+                        headlineContent = { Text(category.name) },
+                        colors = ListItemDefaults.colors(containerColor = MaterialTheme.colorScheme.surface)
+                    )
+                }
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             }
             
             Button(
                 onClick = { showTagDialog = true },
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp, bottom = padding.calculateBottomPadding() + 80.dp)
             ) {
                 Text("Tag hinzufügen")
             }
@@ -310,9 +367,9 @@ fun SettingsScreen(
             }
         }
 
-        if (showDialog) {
+        if (showFeedDialog) {
             AlertDialog(
-                onDismissRequest = { showDialog = false },
+                onDismissRequest = { showFeedDialog = false },
                 title = { Text("Add Feed") },
                 text = {
                     Column {
@@ -333,7 +390,7 @@ fun SettingsScreen(
                     Button(onClick = {
                         if (newFeedName.isNotBlank() && newFeedUrl.isNotBlank()) {
                             viewModel.addFeedSource(newFeedName, newFeedUrl)
-                            showDialog = false
+                            showFeedDialog = false
                             newFeedName = ""
                             newFeedUrl = ""
                         }
@@ -342,7 +399,52 @@ fun SettingsScreen(
                     }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showDialog = false }) {
+                    TextButton(onClick = { showFeedDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        if (showStopDialog) {
+            AlertDialog(
+                onDismissRequest = { showStopDialog = false },
+                title = { Text("Stop AI Engine") },
+                text = { Text("Are you sure you want to stop the AI Engine?") },
+                confirmButton = {
+                    Button(onClick = {
+                        viewModel.stopEngine()
+                        showStopDialog = false
+                    }) {
+                        Text("Stop")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showStopDialog = false }) {
+                        Text("Cancel")
+                    }
+                }
+            )
+        }
+
+        if (showDeleteDialog) {
+            AlertDialog(
+                onDismissRequest = { showDeleteDialog = false },
+                title = { Text("Delete AI Model") },
+                text = { Text("Are you sure you want to delete the AI Model? This action cannot be undone.") },
+                confirmButton = {
+                    Button(
+                        onClick = {
+                            viewModel.deleteModelCache()
+                            showDeleteDialog = false
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Delete")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDeleteDialog = false }) {
                         Text("Cancel")
                     }
                 }

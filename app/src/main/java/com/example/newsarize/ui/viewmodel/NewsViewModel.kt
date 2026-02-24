@@ -289,7 +289,8 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                         title = it.title,
                         link = it.link,
                         content = it.description,
-                        pubDate = it.pubDate
+                        pubDate = it.pubDate,
+                        imageUrl = it.imageUrl
                     )
                 }
                 val insertedIds = db.articleDao().insertArticles(entities)
@@ -334,6 +335,8 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                         val tags = db.categoryDao().getAllCategories().map { it.name }
                         if (tags.isNotEmpty()) {
                             currentCategory = aiService.categorize(nextArticle.title + "\n" + nextArticle.content, tags)
+                        } else {
+                            currentCategory = "Allgemein"
                         }
                     }
 
@@ -359,9 +362,22 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                         category = currentCategory,
                         content = ""
                     ))
-                } catch (e: Exception) {
-                    // Fallback: mark as "processed" with defaults if it fails multiple times? 
-                    // For now, just wait and retry.
+                } catch (e: Throwable) {
+                    // Fallback: If a severe crash occurs (e.g., native crash, OOM), mark as processed 
+                    // to prevent infinite loops on the exact same article blocking the rest
+                    try {
+                        val failArticle = db.articleDao().getArticleById(nextArticleId)
+                        if (failArticle != null) {
+                            db.articleDao().updateArticle(failArticle.copy(
+                                summary = failArticle.summary ?: "Kritischer Fehler bei Generierung.",
+                                category = failArticle.category ?: "Fehler",
+                                content = ""
+                            ))
+                        }
+                    } catch (e2: Throwable) {
+                        // Ignore
+                    }
+                    kotlinx.coroutines.delay(2000)
                 }
                 
                 kotlinx.coroutines.delay(2500) // Yield CPU/GPU fully back to UI between articles

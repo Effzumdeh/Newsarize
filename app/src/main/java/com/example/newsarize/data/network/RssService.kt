@@ -19,7 +19,8 @@ data class RssItem(
     val title: String,
     val link: String,
     val description: String,
-    val pubDate: Long
+    val pubDate: Long,
+    val imageUrl: String?
 )
 
 class RssService {
@@ -66,6 +67,24 @@ class RssService {
                             // Only capture alternate links or if rel is missing (default)
                             if (href != null && (rel == null || rel.equals("alternate", ignoreCase = true))) {
                                 currentItem["link"] = href
+                            } else if (href != null && rel.equals("enclosure", ignoreCase = true)) {
+                                val type = parser.getAttributeValue(null, "type")
+                                if (type?.startsWith("image/") == true) {
+                                    currentItem["imageurl"] = href
+                                }
+                            }
+                        } else if ((tagName.equals("enclosure", ignoreCase = true) || tagName.equals("content", ignoreCase = true)) && currentItem != null) {
+                            // RSS enclosure or Media RSS content
+                            val url = parser.getAttributeValue(null, "url")
+                            val type = parser.getAttributeValue(null, "type")
+                            val medium = parser.getAttributeValue(null, "medium")
+                            
+                            // Check if it's an image
+                            if (url != null && (type?.startsWith("image/") == true || medium.equals("image", ignoreCase = true) || url.endsWith(".jpg", ignoreCase = true) || url.endsWith(".png", ignoreCase = true))) {
+                                // Only set if not already set or if we prefer this one
+                                if (currentItem["imageurl"] == null) {
+                                    currentItem["imageurl"] = url
+                                }
                             }
                         }
                     }
@@ -83,6 +102,16 @@ class RssService {
                                 
                                 val rawDesc = it["description"] ?: it["content"] ?: it["summary"] ?: ""
                                 
+                                // Try to extract image from CDATA HTML if enclosure wasn't found
+                                var finalImageUrl = it["imageurl"]
+                                if (finalImageUrl == null && rawDesc.contains("<img", ignoreCase = true)) {
+                                    val imgRegex = "(?i)<img[^>]+src\\s*=\\s*['\"]([^'\"]+)['\"][^>]*>".toRegex()
+                                    val matchResult = imgRegex.find(rawDesc)
+                                    if (matchResult != null) {
+                                        finalImageUrl = matchResult.groupValues[1]
+                                    }
+                                }
+                                
                                 // Some Atom links are extracted inside TEXT, others in START_TAG href.
                                 // We keep whatever was written to "link"
                                 val finalLink = it["link"] ?: ""
@@ -94,7 +123,8 @@ class RssService {
                                             title = it["title"] ?: "Kein Titel",
                                             link = finalLink,
                                             description = removeHtmlTags(rawDesc),
-                                            pubDate = parsedDate
+                                            pubDate = parsedDate,
+                                            imageUrl = finalImageUrl
                                         )
                                     )
                                 }

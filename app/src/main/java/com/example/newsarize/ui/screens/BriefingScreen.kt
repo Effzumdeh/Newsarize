@@ -40,6 +40,17 @@ import java.util.Locale
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.material3.CardDefaults
+import androidx.compose.ui.draw.clip
+import coil.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,7 +66,9 @@ fun BriefingScreen(
     val filterState by viewModel.filterState.collectAsState()
     val selectedCategoryId by viewModel.selectedCategoryId.collectAsState()
     
-    var showFeedMenu by remember { mutableStateOf(false) }
+    var showSourceSheet by remember { mutableStateOf(false) }
+    var showTagSheet by remember { mutableStateOf(false) }
+    
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     val snackbarHostState = remember { SnackbarHostState() }
     val listState = rememberLazyListState()
@@ -82,34 +95,14 @@ fun BriefingScreen(
             LargeTopAppBar(
                 title = { 
                     val titleName = feedSources.find { it.id == selectedFeedId }?.name ?: "Daily Briefing"
-                    Text(titleName) 
+                    Text(
+                        text = titleName,
+                        modifier = Modifier.clickable { showSourceSheet = true }
+                    ) 
                 },
                 actions = {
-                    Box {
-                        IconButton(onClick = { showFeedMenu = true }) {
-                            Icon(Icons.Default.List, contentDescription = "Filter Feed")
-                        }
-                        DropdownMenu(
-                            expanded = showFeedMenu,
-                            onDismissRequest = { showFeedMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Alle Quellen") },
-                                onClick = { 
-                                    viewModel.setSelectedFeed(null)
-                                    showFeedMenu = false
-                                }
-                            )
-                            feedSources.forEach { feed ->
-                                DropdownMenuItem(
-                                    text = { Text(feed.name) },
-                                    onClick = { 
-                                        viewModel.setSelectedFeed(feed.id)
-                                        showFeedMenu = false
-                                    }
-                                )
-                            }
-                        }
+                    IconButton(onClick = { showTagSheet = true }) {
+                        Icon(Icons.Default.List, contentDescription = "Filter Tags")
                     }
                     IconButton(onClick = { viewModel.fetchAndSummarizeNews() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh News")
@@ -119,18 +112,14 @@ fun BriefingScreen(
                     }
                 },
                 scrollBehavior = scrollBehavior,
-                colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(3.dp),
-                    titleContentColor = MaterialTheme.colorScheme.onSurface
-                )
+                windowInsets = WindowInsets.statusBars
             )
         }
     ) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
+                .padding(top = padding.calculateTopPadding())
         ) {
             // Segmented Button Row (Read/Unread)
             SingleChoiceSegmentedButtonRow(
@@ -148,35 +137,6 @@ fun BriefingScreen(
                     ) {
                         Text(label)
                     }
-                }
-            }
-
-            // Category Chips with Checkmark
-            LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                item {
-                    FilterChip(
-                        selected = selectedCategoryId == null,
-                        onClick = { viewModel.setSelectedCategory(null) },
-                        label = { Text("Alle Themen") },
-                        leadingIcon = if (selectedCategoryId == null) {
-                            { Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
-                        } else null
-                    )
-                }
-                lazyItems(categories) { category ->
-                    FilterChip(
-                        selected = selectedCategoryId == category.name,
-                        onClick = { viewModel.setSelectedCategory(category.name) },
-                        label = { Text(category.name) },
-                        leadingIcon = if (selectedCategoryId == category.name) {
-                            { Icon(Icons.Default.Done, contentDescription = null, modifier = Modifier.size(FilterChipDefaults.IconSize)) }
-                        } else null
-                    )
                 }
             }
 
@@ -200,7 +160,7 @@ fun BriefingScreen(
                         start = 16.dp,
                         top = 16.dp,
                         end = 16.dp,
-                        bottom = 16.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                        bottom = padding.calculateBottomPadding() + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp
                     ),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
@@ -238,6 +198,8 @@ fun BriefingScreen(
                                 }
                             }
                         ) {
+                            var expanded by remember { mutableStateOf(false) }
+                            
                             ElevatedCard(
                                 onClick = { 
                                     viewModel.setArticleRead(article.id)
@@ -245,28 +207,46 @@ fun BriefingScreen(
                                 },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                                    .alpha(if (article.isRead) 0.6f else 1.0f),
-                                shape = ShapeDefaults.Large
+                                    .alpha(if (article.isRead) 0.6f else 1.0f)
+                                    .animateContentSize(),
+                                shape = ShapeDefaults.Large,
+                                elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
                             ) {
                                 Column(modifier = Modifier.padding(16.dp)) {
-                                    Text(
-                                        text = article.title,
-                                        style = MaterialTheme.typography.titleLarge,
-                                        fontWeight = if (article.isRead) FontWeight.Normal else FontWeight.Bold,
-                                        color = if (article.isRead) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
-                                    )
-                                    
-                                    article.category?.let { cat ->
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        SuggestionChip(
-                                            onClick = { },
-                                            label = { Text(cat) },
-                                            colors = SuggestionChipDefaults.suggestionChipColors(
-                                                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                                                labelColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                    Row(verticalAlignment = Alignment.Top, modifier = Modifier.fillMaxWidth()) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = article.title,
+                                                style = MaterialTheme.typography.titleLarge,
+                                                fontWeight = if (article.isRead) FontWeight.Normal else FontWeight.Bold,
+                                                color = if (article.isRead) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.primary
                                             )
-                                        )
+                                            
+                                            article.category?.let { cat ->
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                SuggestionChip(
+                                                    onClick = { },
+                                                    label = { Text(cat) },
+                                                    colors = SuggestionChipDefaults.suggestionChipColors(
+                                                        containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                                                        labelColor = MaterialTheme.colorScheme.onSecondaryContainer
+                                                    )
+                                                )
+                                            }
+                                        }
+
+                                        if (!article.imageUrl.isNullOrBlank()) {
+                                            Spacer(modifier = Modifier.width(16.dp))
+                                            AsyncImage(
+                                                model = article.imageUrl,
+                                                contentDescription = "Article Image",
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(80.dp)
+                                                    .clip(ShapeDefaults.Medium)
+                                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                            )
+                                        }
                                     }
 
                                     Spacer(modifier = Modifier.height(8.dp))
@@ -277,47 +257,143 @@ fun BriefingScreen(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    Spacer(modifier = Modifier.height(12.dp))
                                     
-                                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-                                    Spacer(modifier = Modifier.height(12.dp))
-                                    
-                                    Surface(
-                                        color = MaterialTheme.colorScheme.surfaceVariant,
-                                        shape = ShapeDefaults.Medium,
-                                        modifier = Modifier.fillMaxWidth()
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    TextButton(
+                                        onClick = { expanded = !expanded },
+                                        contentPadding = PaddingValues(0.dp)
                                     ) {
-                                        Column(modifier = Modifier.padding(12.dp)) {
-                                            Text(
-                                                text = "🤖 KI-Zusammenfassung",
-                                                style = MaterialTheme.typography.labelLarge,
-                                                color = MaterialTheme.colorScheme.secondary
-                                            )
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            
-                                            val isSummarizingApp by viewModel.isSummarizing.collectAsState()
-                                            
-                                            if (article.summary == null && isSummarizingApp) {
-                                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                                                    Spacer(modifier = Modifier.width(8.dp))
+                                        Text(if (expanded) "Hide AI Summary" else "Show AI Summary")
+                                    }
+
+                                    if (expanded) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.surfaceVariant,
+                                            shape = ShapeDefaults.Medium,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Column(modifier = Modifier.padding(12.dp)) {
+                                                Text(
+                                                    text = "🤖 KI-Zusammenfassung",
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    color = MaterialTheme.colorScheme.secondary
+                                                )
+                                                Spacer(modifier = Modifier.height(6.dp))
+                                                
+                                                val isSummarizingApp by viewModel.isSummarizing.collectAsState()
+                                                
+                                                if (article.summary == null && isSummarizingApp) {
+                                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Text(
+                                                            text = "Generiere...",
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                    }
+                                                } else {
                                                     Text(
-                                                        text = "Generiere...",
-                                                        style = MaterialTheme.typography.bodyMedium,
-                                                        color = MaterialTheme.colorScheme.primary
+                                                        text = article.summary ?: "Ausstehend...",
+                                                        style = MaterialTheme.typography.bodyMedium
                                                     )
                                                 }
-                                            } else {
-                                                Text(
-                                                    text = article.summary ?: "Ausstehend...",
-                                                    style = MaterialTheme.typography.bodyMedium
-                                                )
                                             }
                                         }
                                     }
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+        
+        if (showSourceSheet) {
+            val sheetState = rememberModalBottomSheetState()
+            ModalBottomSheet(
+                onDismissRequest = { showSourceSheet = false },
+                sheetState = sheetState
+            ) {
+                LazyColumn(modifier = Modifier.padding(bottom = 24.dp)) {
+                    item {
+                        Text(
+                            "Select Feed Source",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                        HorizontalDivider()
+                    }
+                    item {
+                        ListItem(
+                            headlineContent = { Text("Alle Quellen") },
+                            modifier = Modifier.clickable {
+                                viewModel.setSelectedFeed(null)
+                                showSourceSheet = false
+                            }
+                        )
+                    }
+                    items(feedSources) { feed ->
+                        ListItem(
+                            headlineContent = { Text(feed.name) },
+                            modifier = Modifier.clickable {
+                                viewModel.setSelectedFeed(feed.id)
+                                showSourceSheet = false
+                            },
+                            trailingContent = {
+                                if (selectedFeedId == feed.id) {
+                                    Icon(Icons.Default.Done, contentDescription = "Selected")
+                                }
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        if (showTagSheet) {
+            val sheetState = rememberModalBottomSheetState()
+            ModalBottomSheet(
+                onDismissRequest = { showTagSheet = false },
+                sheetState = sheetState
+            ) {
+                LazyColumn(modifier = Modifier.padding(bottom = 24.dp)) {
+                    item {
+                        Text(
+                            "Filter by Tag",
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                        )
+                        HorizontalDivider()
+                    }
+                    item {
+                        ListItem(
+                            headlineContent = { Text("Alle Themen") },
+                            modifier = Modifier.clickable {
+                                viewModel.setSelectedCategory(null)
+                                showTagSheet = false
+                            },
+                            trailingContent = {
+                                if (selectedCategoryId == null) {
+                                    Icon(Icons.Default.Done, contentDescription = "Selected")
+                                }
+                            }
+                        )
+                    }
+                    items(categories) { category ->
+                        ListItem(
+                            headlineContent = { Text(category.name) },
+                            modifier = Modifier.clickable {
+                                viewModel.setSelectedCategory(category.name)
+                                showTagSheet = false
+                            },
+                            trailingContent = {
+                                if (selectedCategoryId == category.name) {
+                                    Icon(Icons.Default.Done, contentDescription = "Selected")
+                                }
+                            }
+                        )
                     }
                 }
             }
