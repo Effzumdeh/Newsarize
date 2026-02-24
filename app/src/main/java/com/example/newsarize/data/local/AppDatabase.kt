@@ -13,7 +13,7 @@ import com.example.newsarize.data.local.dao.CategoryDao
 
 @Database(
     entities = [ArticleEntity::class, FeedSourceEntity::class, CategoryEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

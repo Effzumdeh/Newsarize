@@ -77,8 +77,7 @@ fun NewsApp(viewModel: NewsViewModel) {
 
     NavHost(
         navController = navController,
-        startDestination = if (isModelReady) "briefing" else "download",
-        modifier = Modifier.windowInsetsPadding(WindowInsets.systemBars)
+        startDestination = if (isModelReady) "briefing" else "download"
     ) {
         composable("briefing") {
             BriefingScreen(
