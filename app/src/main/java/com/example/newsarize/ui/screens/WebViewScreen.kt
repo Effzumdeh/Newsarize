@@ -35,14 +35,18 @@ fun WebViewScreen(
         }
     ) { padding ->
         AndroidView(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
+            modifier = Modifier.fillMaxSize().padding(padding),
             factory = { context ->
                 WebView(context).apply {
+                    layoutParams = android.view.ViewGroup.LayoutParams(
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                        android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                    )
                     webViewClient = WebViewClient()
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
+                    settings.loadWithOverviewMode = true
+                    settings.useWideViewPort = true
                     loadUrl(url)
                 }
             },

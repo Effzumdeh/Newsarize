@@ -47,7 +47,7 @@ class MediaPipeAiService(private val context: Context) {
                 
                 isInitialized = true
                 true
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 Log.e("MediaPipeAiService", "Complete Init failed (incl. CPU)", e)
                 throw e
             }
@@ -81,8 +81,8 @@ class MediaPipeAiService(private val context: Context) {
             if (!isInitialized || llmInference == null) {
                 return@withContext "Error: Model not initialized"
             }
-            // Using Gemma typical formatting with strict German grammar instructions
-            val prompt = "<start_of_turn>user\nDu bist ein professioneller Redakteur. Fasse den folgenden Text in 3 bis 5 Sätzen ausführlich und verständlich zusammen. Nenne konkrete Namen, Orte, Fakten und Hintergründe, damit der Leser den Sachverhalt vollumfänglich versteht und kein Vorwissen durch den ursprünglichen Artikel benötigt. Vermeide Clickbait-Formulierungen. Achte auf absolut fehlerfreie Grammatik. Text: $text<end_of_turn>\n<start_of_turn>model\n"
+            // Using Gemma typical formatting with strict limitation on hallucination
+            val prompt = "<start_of_turn>user\nDu bist ein professioneller Redakteur. Fasse den folgenden Text kurz und prägnant in 2-3 Sätzen zusammen. Verwende AUSSCHLIESSLICH Fakten aus dem bereitgestellten Text. Erfinde absolut nichts selber hinzu. Wenn Informationen fehlen, lasse sie aus. Achte auf absolut fehlerfreie Grammatik. Text: $text<end_of_turn>\n<start_of_turn>model\n"
             
             try {
                 val responseText = llmInference?.generateResponse(prompt)

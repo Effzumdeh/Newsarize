@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InputStream
@@ -90,18 +92,8 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
         // We no longer call checkModelStatus() here to avoid warm-restart GPU crashes.
         // The user must manually start the engine or it starts via UI triggers.
         
-        // Prefill default feeds and categories if empty
-        viewModelScope.launch {
-            if (db.feedSourceDao().getAllFeedSources().isEmpty()) {
-                db.feedSourceDao().insertFeedSource(FeedSourceEntity(name = "Tagesschau", url = "https://www.tagesschau.de/xml/rss2"))
-                db.feedSourceDao().insertFeedSource(FeedSourceEntity(name = "Heise", url = "https://www.heise.de/rss/heise-atom.xml"))
-            }
-            if (db.categoryDao().getCategoryCount() == 0) {
-                listOf("#Politik", "#Tech", "#Wirtschaft", "#Lokal").forEach {
-                    db.categoryDao().insertCategory(com.example.newsarize.data.local.entity.CategoryEntity(name = it))
-                }
-            }
-        }
+        // Removed the automatic insertion of tags and default feeds to allow the user
+        // to have a fully empty database setup if desired.
         
         // Start infinite inference worker
         startInferenceWorker()
@@ -168,13 +160,14 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
             _downloadState.value = DownloadState.Downloading(0, 0f, 0f)
             
             try {
-                val contentResolver = getApplication<Application>().contentResolver
-                val inputStream: InputStream? = contentResolver.openInputStream(uri)
+                kotlinx.coroutines.withContext(Dispatchers.IO) {
+                    val contentResolver = getApplication<Application>().contentResolver
+                    val inputStream: InputStream? = contentResolver.openInputStream(uri)
                 
-                if (inputStream == null) {
-                    _downloadState.value = DownloadState.Error("Datei konnte nicht gelesen werden.")
-                    return@launch
-                }
+                    if (inputStream == null) {
+                        _downloadState.value = DownloadState.Error("Datei konnte nicht gelesen werden.")
+                        return@withContext
+                    }
                 
                 // Get file name and size metadata
                 var fileName = ""
@@ -241,7 +234,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                                 }
                                 if (!foundBin) {
                                     _downloadState.value = DownloadState.Error("Keine valide Modelldatei (.bin, .task, .tflite) im .tar.gz-Archiv gefunden!")
-                                    return@launch
+                                    return@withContext
                                 }
                             }
                         }
@@ -274,10 +267,10 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 
-                _downloadState.value = DownloadState.Finished
-                _isModelInstalled.value = true // Ensure UI recognizes file presence
-                checkModelStatus()
-                
+                    _downloadState.value = DownloadState.Finished
+                    _isModelInstalled.value = true // Ensure UI recognizes file presence
+                    checkModelStatus()
+                }
             } catch (e: Exception) {
                 _downloadState.value = DownloadState.Error("Kopieren fehlgeschlagen: ${e.message}")
             }
@@ -352,6 +345,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                         for (chunk in chunks) {
                             val partialSummary = aiService.summarize(chunk)
                             combinedSummary.append(partialSummary).append("\n")
+                            kotlinx.coroutines.delay(500) // Yield during multi-chunk processing for long articles
                         }
                         
                         val finalSummary = combinedSummary.toString().trim()
@@ -370,7 +364,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                     // For now, just wait and retry.
                 }
                 
-                kotlinx.coroutines.delay(1500) // Yield CPU/GPU fully back to UI
+                kotlinx.coroutines.delay(2500) // Yield CPU/GPU fully back to UI between articles
             }
         }
     }

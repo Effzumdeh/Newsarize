@@ -8,7 +8,8 @@ Newsarize was built to combat information overload without sending your private 
 
 ## ✨ Key Features
 - **100% Local Inference:** No API keys, no server costs, and no data leaves your device. Everything runs through the native `tasks-genai` hardware acceleration.
-- **Universal XML Unmarshaller:** Newsarize natively digests both standard RSS 2.0 and complex Atom structures (like Heise & Caschys Blog), reliably capturing deep ISO-8601 timestamps and extracting `href` attributes automatically.
+- **Responsive Architecture**: Intelligent UI coroutine throttling and background `Dispatchers.IO` handling ensure the Android interface never freezes—even when unpacking massive 2GB models or generating heavy AI loops.
+- **Universal XML Unmarshaller:** Newsarize natively digests both standard RSS 2.0 and complex Atom structures (like Heise & Caschys Blog), reliably capturing deep ISO-8601 timestamps and extracting `href` attributes automatically. Fully supports dynamic WebView touch-scrolling for modern SPAs.
 - **Smart Background Queue & Filtering:** A continuous FIFO coroutine daemon intelligently digests unsummarized articles in the background, carefully throttling GPU/CPU usage to ensure the UI remains buttery smooth. The UI features segmented chips to instantly filter lists by "Alle", "Ungelesen", or "Gelesen", alongside specific RSS provider dropdowns. Filter changes instantly snap back to the top of the feed.
 - **Modern SPA WebView Native Scrolling:** Reading complex Javascript-heavy modern sites (like `heise.de`) works flawlessly via an embedded `DOMStorage` enabled Compose WebView.
 - **Interactive UI Feedback:** Tapping the refresh button fetches new background content seamlessly while providing instant Snackbar feedback ("X neue Artikel gefunden") and cleanly auto-scrolling to the top to show the latest news.
