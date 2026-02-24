@@ -8,15 +8,18 @@ import com.example.newsarize.data.local.dao.ArticleDao
 import com.example.newsarize.data.local.dao.FeedSourceDao
 import com.example.newsarize.data.local.entity.ArticleEntity
 import com.example.newsarize.data.local.entity.FeedSourceEntity
+import com.example.newsarize.data.local.entity.CategoryEntity
+import com.example.newsarize.data.local.dao.CategoryDao
 
 @Database(
-    entities = [ArticleEntity::class, FeedSourceEntity::class],
-    version = 3,
+    entities = [ArticleEntity::class, FeedSourceEntity::class, CategoryEntity::class],
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun articleDao(): ArticleDao
     abstract fun feedSourceDao(): FeedSourceDao
+    abstract fun categoryDao(): CategoryDao
 
     companion object {
         @Volatile

@@ -12,6 +12,8 @@ import com.example.newsarize.domain.ai.MediaPipeAiService
 import com.example.newsarize.domain.downloader.ModelDownloader
 import com.example.newsarize.domain.downloader.DownloadState
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -53,25 +55,51 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     private val _filterState = MutableStateFlow("ALL") // "ALL", "UNREAD", "READ"
     val filterState = _filterState.asStateFlow()
 
+    private val _selectedCategoryId = MutableStateFlow<String?>(null)
+    val selectedCategoryId = _selectedCategoryId.asStateFlow()
+
     @OptIn(ExperimentalCoroutinesApi::class)
-    val articles = combine(_selectedFeedId, _filterState) { feedId, filter ->
-        Pair(feedId, filter)
-    }.flatMapLatest { (feedId, filter) ->
-        db.articleDao().getFilteredArticlesFlow(feedId, filter)
+    val articles = combine(_selectedFeedId, _filterState, _selectedCategoryId) { feedId, filter, category ->
+        Triple(feedId, filter, category)
+    }.flatMapLatest { (feedId, filter, category) ->
+        db.articleDao().getFilteredArticlesFlow(feedId, filter, category)
     }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     val feedSources = db.feedSourceDao().getAllFeedSourcesFlow()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
+    val categories = combine(
+        db.categoryDao().getAllCategoriesFlow(),
+        db.articleDao().getUsedCategoriesFlow()
+    ) { allCats, usedCats ->
+        allCats.filter { usedCats.contains(it.name) }
+    }.stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    val allCategories = db.categoryDao().getAllCategoriesFlow()
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
+
+    private val _uiEvents = MutableSharedFlow<UiEvent>()
+    val uiEvents = _uiEvents.asSharedFlow()
+
+    sealed class UiEvent {
+        data class ShowSnackbar(val message: String) : UiEvent()
+        object ScrollToTop : UiEvent()
+    }
+
     init {
         // We no longer call checkModelStatus() here to avoid warm-restart GPU crashes.
         // The user must manually start the engine or it starts via UI triggers.
         
-        // Prefill default feeds if empty
+        // Prefill default feeds and categories if empty
         viewModelScope.launch {
             if (db.feedSourceDao().getAllFeedSources().isEmpty()) {
                 db.feedSourceDao().insertFeedSource(FeedSourceEntity(name = "Tagesschau", url = "https://www.tagesschau.de/xml/rss2"))
                 db.feedSourceDao().insertFeedSource(FeedSourceEntity(name = "Heise", url = "https://www.heise.de/rss/heise-atom.xml"))
+            }
+            if (db.categoryDao().getCategoryCount() == 0) {
+                listOf("#Politik", "#Tech", "#Wirtschaft", "#Lokal").forEach {
+                    db.categoryDao().insertCategory(com.example.newsarize.data.local.entity.CategoryEntity(name = it))
+                }
             }
         }
         
@@ -259,6 +287,7 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
     fun fetchAndSummarizeNews() {
         viewModelScope.launch {
             val sources = db.feedSourceDao().getAllFeedSources()
+            var totalNewArticles = 0
             for (source in sources) {
                 val fetchedItems = rssService.fetchFeed(source.url)
                 val entities = fetchedItems.map {
@@ -270,7 +299,14 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                         pubDate = it.pubDate
                     )
                 }
-                db.articleDao().insertArticles(entities)
+                val insertedIds = db.articleDao().insertArticles(entities)
+                totalNewArticles += insertedIds.count { it != -1L }
+            }
+            if (totalNewArticles > 0) {
+                _uiEvents.emit(UiEvent.ShowSnackbar("$totalNewArticles neue Artikel gefunden"))
+                _uiEvents.emit(UiEvent.ScrollToTop)
+            } else {
+                _uiEvents.emit(UiEvent.ShowSnackbar("Keine neuen Artikel in abonnierten Feeds"))
             }
         }
     }
@@ -284,10 +320,9 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                     continue
                 }
 
-                // Fetch oldest/newest unsummarized item (prioritize newest visible UI item)
-                val nextArticleId = db.articleDao().getNextUnsummarizedArticleId()
+                // Fetch oldest/newest unprocessed item
+                val nextArticleId = db.articleDao().getNextUnprocessedArticleId()
                 if (nextArticleId == null) {
-                    // Queue empty, chill
                     _isSummarizing.value = false
                     kotlinx.coroutines.delay(2000)
                     continue
@@ -297,38 +332,85 @@ class NewsViewModel(application: Application) : AndroidViewModel(application) {
                 
                 try {
                     val nextArticle = db.articleDao().getArticleById(nextArticleId) ?: continue
-                    val chunks = aiService.chunkText(nextArticle.content)
-                    val combinedSummary = StringBuilder()
                     
-                    for (chunk in chunks) {
-                        val partialSummary = aiService.summarize(chunk)
-                        combinedSummary.append(partialSummary).append("\n")
+                    var currentSummary = nextArticle.summary
+                    var currentCategory = nextArticle.category
+
+                    // 1. Categorization (if missing)
+                    if (currentCategory == null) {
+                        val tags = db.categoryDao().getAllCategories().map { it.name }
+                        if (tags.isNotEmpty()) {
+                            currentCategory = aiService.categorize(nextArticle.title + "\n" + nextArticle.content, tags)
+                        }
+                    }
+
+                    // 2. Summary (if missing)
+                    if (currentSummary == null) {
+                        val chunks = aiService.chunkText(nextArticle.content)
+                        val combinedSummary = StringBuilder()
+                        
+                        for (chunk in chunks) {
+                            val partialSummary = aiService.summarize(chunk)
+                            combinedSummary.append(partialSummary).append("\n")
+                        }
+                        
+                        val finalSummary = combinedSummary.toString().trim()
+                        currentSummary = finalSummary.ifEmpty { "Generierung fehlgeschlagen." }
                     }
                     
-                    val finalSummary = combinedSummary.toString().trim()
-                    // Never leave summary exact null, to avoid endless loops on failed generation
-                    val safeSummary = finalSummary.ifEmpty { "Generierung fehlgeschlagen." }
-                    
-                    // Drop the massive HTML text description from SQLite to prevent CursorWindowAllocationException (2MB limit) on app restarts.
-                    db.articleDao().updateArticle(nextArticle.copy(summary = safeSummary, content = ""))
+                    // Update article with both summary and category. 
+                    // Set content to empty to save space as per original code.
+                    db.articleDao().updateArticle(nextArticle.copy(
+                        summary = currentSummary, 
+                        category = currentCategory,
+                        content = ""
+                    ))
                 } catch (e: Exception) {
-                    // Update fallback if possible
-                    db.articleDao().updateArticleReadStatus(nextArticleId, false) // fallback signal
+                    // Fallback: mark as "processed" with defaults if it fails multiple times? 
+                    // For now, just wait and retry.
                 }
                 
-                // Slight pause to let GPU cool down and UI thread to catch up frames
-                kotlinx.coroutines.delay(500)
+                kotlinx.coroutines.delay(1500) // Yield CPU/GPU fully back to UI
             }
         }
     }
 
-    fun setFilterState(state: String) { _filterState.value = state }
+    fun setFilterState(state: String) { 
+        _filterState.value = state 
+        viewModelScope.launch { _uiEvents.emit(UiEvent.ScrollToTop) }
+    }
     
-    fun setSelectedFeed(feedId: Int?) { _selectedFeedId.value = feedId }
+    fun setSelectedFeed(feedId: Int?) { 
+        _selectedFeedId.value = feedId 
+        viewModelScope.launch { _uiEvents.emit(UiEvent.ScrollToTop) }
+    }
+
+    fun setSelectedCategory(category: String?) { 
+        _selectedCategoryId.value = category 
+        viewModelScope.launch { _uiEvents.emit(UiEvent.ScrollToTop) }
+    }
     
     fun toggleArticleReadStatus(article: ArticleUiModel) {
         viewModelScope.launch {
             db.articleDao().updateArticleReadStatus(article.id, !article.isRead)
+        }
+    }
+
+    fun setArticleRead(articleId: Int) {
+        viewModelScope.launch {
+            db.articleDao().updateArticleReadStatus(articleId, true)
+        }
+    }
+
+    fun addCategory(name: String) {
+        viewModelScope.launch {
+            db.categoryDao().insertCategory(com.example.newsarize.data.local.entity.CategoryEntity(name = name))
+        }
+    }
+
+    fun deleteCategory(category: com.example.newsarize.data.local.entity.CategoryEntity) {
+        viewModelScope.launch {
+            db.categoryDao().deleteCategory(category)
         }
     }
 

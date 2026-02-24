@@ -2,13 +2,18 @@ package com.example.newsarize.ui.screens
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -142,14 +147,18 @@ fun SettingsScreen(
                 title = { Text("App Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showDialog = true }) {
-                Text("+")
+            FloatingActionButton(
+                onClick = { showDialog = true },
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Add Feed")
             }
         }
     ) { padding ->
@@ -158,6 +167,7 @@ fun SettingsScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .padding(16.dp)
+                .verticalScroll(rememberScrollState())
         ) {
             Text(
                 "Model Management",
@@ -179,9 +189,12 @@ fun SettingsScreen(
                         Spacer(modifier = Modifier.height(12.dp))
                         Text("Engine is running ✅", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyLarge)
                         Spacer(modifier = Modifier.height(8.dp))
-                        Button(
+                        FilledTonalButton(
                             onClick = { viewModel.stopEngine() },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer,
+                                contentColor = MaterialTheme.colorScheme.onErrorContainer
+                            )
                         ) {
                             Text("Stop AI Engine")
                         }
@@ -199,9 +212,12 @@ fun SettingsScreen(
                     
                     if (isModelReady) {
                         Spacer(modifier = Modifier.height(12.dp))
-                        Button(
+                        OutlinedButton(
                             onClick = { viewModel.deleteModelCache() },
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                contentColor = MaterialTheme.colorScheme.error
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
                         ) {
                             Text("Delete AI Model")
                         }
@@ -218,22 +234,79 @@ fun SettingsScreen(
             )
             Spacer(modifier = Modifier.height(8.dp))
             feeds.forEach { feed ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(feed.name, style = MaterialTheme.typography.titleMedium)
-                        Text(feed.url, style = MaterialTheme.typography.bodySmall)
+                ListItem(
+                    headlineContent = { Text(feed.name) },
+                    supportingContent = { Text(feed.url) },
+                    trailingContent = {
+                        IconButton(onClick = { viewModel.deleteFeedSource(feed) }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete")
+                        }
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Text(
+                "Themen (Tags)",
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+            val categories by viewModel.allCategories.collectAsState()
+            var showTagDialog by remember { mutableStateOf(false) }
+            var newTagName by remember { mutableStateOf("") }
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            categories.forEach { category ->
+                ListItem(
+                    headlineContent = { Text(category.name) },
+                    trailingContent = {
+                        IconButton(onClick = { viewModel.deleteCategory(category) }) {
+                            Icon(Icons.Default.Delete, contentDescription = "Delete")
+                        }
+                    },
+                    colors = ListItemDefaults.colors(containerColor = Color.Transparent)
+                )
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+            }
+            
+            Button(
+                onClick = { showTagDialog = true },
+                modifier = Modifier.fillMaxWidth().padding(top = 16.dp)
+            ) {
+                Text("Tag hinzufügen")
+            }
+
+            if (showTagDialog) {
+                AlertDialog(
+                    onDismissRequest = { showTagDialog = false },
+                    title = { Text("Tag hinzufügen") },
+                    text = {
+                        OutlinedTextField(
+                            value = newTagName,
+                            onValueChange = { newTagName = it },
+                            label = { Text("z.B. #Fussball") }
+                        )
+                    },
+                    confirmButton = {
+                        Button(onClick = {
+                            if (newTagName.isNotBlank()) {
+                                viewModel.addCategory(newTagName)
+                                showTagDialog = false
+                                newTagName = ""
+                            }
+                        }) {
+                            Text("Hinzufügen")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showTagDialog = false }) {
+                            Text("Abbrechen")
+                        }
                     }
-                    IconButton(onClick = { viewModel.deleteFeedSource(feed) }) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete")
-                    }
-                }
-                Divider()
+                )
             }
         }
 
